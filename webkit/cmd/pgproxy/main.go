@@ -37,8 +37,8 @@ import (
 
 	"github.com/jackc/pgx/v5/pgproto3"
 
-	"github.com/LorenzoSdV/KaneCLIOnlineHackathon/webkit/internal/ndjson"
-	"github.com/LorenzoSdV/KaneCLIOnlineHackathon/webkit/internal/pgwire"
+	"github.com/LorenzoSdV/WebAppFormalVerification/webkit/internal/ndjson"
+	"github.com/LorenzoSdV/WebAppFormalVerification/webkit/internal/pgwire"
 )
 
 const xidQuery = "SELECT pg_current_xact_id_if_assigned()::text"

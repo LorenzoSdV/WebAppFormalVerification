@@ -27,7 +27,7 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgproto3"
 
-	"github.com/LorenzoSdV/KaneCLIOnlineHackathon/webkit/internal/ndjson"
+	"github.com/LorenzoSdV/WebAppFormalVerification/webkit/internal/ndjson"
 )
 
 func env(key, def string) string {

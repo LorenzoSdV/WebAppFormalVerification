@@ -31,7 +31,7 @@ import (
 	"regexp"
 	"strconv"
 
-	"github.com/LorenzoSdV/KaneCLIOnlineHackathon/webkit/internal/ndjson"
+	"github.com/LorenzoSdV/WebAppFormalVerification/webkit/internal/ndjson"
 )
 
 type traceKey struct{}

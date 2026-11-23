@@ -8,7 +8,7 @@ REPO="$(cd "$(dirname "$0")/../../.." && pwd)"
 CONFIG="${1:-$REPO/config/agents/nemotron.json}"; shift || true
 CASES=("${@:-L1 L2 L3}")
 export PATH="/opt/homebrew/opt/coreutils/libexec/gnubin:$PATH"
-TARGET="seeded-shop|LorenzoSdV/KaneCLIOnlineHackathon|TypeScript|seeded shop API"
+TARGET="seeded-shop|LorenzoSdV/WebAppFormalVerification|TypeScript|seeded shop API"
 for c in ${CASES[@]}; do
   ws="$REPO/runs/loop-$c"
   echo "=== $c: $(date)"

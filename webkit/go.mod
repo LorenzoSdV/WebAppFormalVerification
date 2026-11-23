@@ -1,4 +1,4 @@
-module github.com/LorenzoSdV/KaneCLIOnlineHackathon/webkit
+module github.com/LorenzoSdV/WebAppFormalVerification/webkit
 
 go 1.27.4
 
