@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "default_profile": "sol-high",
+  "profiles": {
+    "sol-high": {
+      "agent": "codex",
+      "model": "gpt-6.1-sol",
+      "effort": "high"
+    }
+  },
+  "phases": {}
+}
