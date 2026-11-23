@@ -28,6 +28,7 @@ logic are unchanged, only the timing of its database calls is controlled.
 from __future__ import annotations
 
 import json
+import os
 import secrets
 import threading
 import time
@@ -51,7 +52,7 @@ class LockBlocked(ScheduleError):
 class Gate:
     """Client for the pgproxy control API (webkit/cmd/pgproxy/gate.go)."""
 
-    def __init__(self, url: str = "http://localhost:6433") -> None:
+    def __init__(self, url: str = f"http://{os.environ.get('WK_HOST', 'localhost')}:6433") -> None:
         self.url = url.rstrip("/")
 
     def _call(self, method: str, path: str, body: dict | None = None):

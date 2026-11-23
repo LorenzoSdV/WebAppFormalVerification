@@ -13,7 +13,8 @@ override from a small per-app stack config (TOML) and runs both together:
     wkstack.py overlay  --config stack.toml   print the generated override
 
 All commands take --runs-dir DIR (env WK_RUNS_DIR; default <repo>/runs): where run directories
-and the current-stack state file live.
+and the current-stack state file live. WK_HOST (default localhost) is the host name of the
+published ports, e.g. host.docker.internal when this runs inside a container.
 
 Recorders added around the app (all output goes to <runs-dir>/<run-id>/):
     wk-inbound  reverse proxy in front of the app      -> inbound.ndjson
@@ -25,24 +26,24 @@ Stack config (TOML):
 
     [app]
     compose = "path/to/compose.yaml"   # relative to the config file
-    project = "seeded-shop"            # compose project name
+    project = "booking"                # compose project name
     service = "app"                    # app service name
     port = 3000                        # port the app listens on inside its container
     runtime = "node"                   # "node" loads the OTel bootstrap; "none" skips it
-    probe_path = "/products/1"         # GET path that touches the DB, for the self-test
+    probe_path = "/seats/1"            # GET path that touches the DB, for the self-test
     health_path = "/health"
     reset = ["npm", "run", "-s", "db:seed"]  # app's own seed/reset command, run in the app container
 
     [app.env]                          # extra env for the app (optional)
-    DB_POOL_SIZE = "2"
+    WEB_CONCURRENCY = "1"
 
     [db]
     service = "db"
     kind = "postgres"
     port = 5432
-    user = "shop"
-    password = "shop"
-    database = "shop"
+    user = "app"
+    password = "app"
+    database = "app"
     url_env = "DATABASE_URL"           # env var the app reads its DB URL from
 
     [inbound]
@@ -71,6 +72,9 @@ REPO = WEBKIT.parent
 RUNS = REPO / "runs"
 COLLECTOR_IMAGE = "otel/opentelemetry-collector-contrib:0.165.0"
 RECORDER_IMAGE = "webkit-recorders:local"
+# Host name under which the stack's published ports are reachable from where this tool runs:
+# "localhost" on the host itself, "host.docker.internal" from inside a container (env WK_HOST).
+HOST = os.environ.get("WK_HOST", "localhost")
 
 
 def load_config(path: Path) -> dict:
@@ -176,7 +180,7 @@ def state_file(cfg: dict) -> Path:
 
 
 def base_url(cfg: dict) -> str:
-    return f"http://localhost:{cfg.get('inbound', {}).get('host_port', 8080)}"
+    return f"http://{HOST}:{cfg.get('inbound', {}).get('host_port', 8080)}"
 
 
 def cmd_up(cfg: dict, args: argparse.Namespace) -> None:
@@ -196,7 +200,7 @@ def cmd_up(cfg: dict, args: argparse.Namespace) -> None:
     subprocess.run(cmd, check=True)
     state = {"run_id": run_id, "out_dir": str(out_dir), "overlay": str(overlay),
              "config": str(cfg["_path"]), "config_sha256": cfg["_sha256"], "base_url": base_url(cfg),
-             "control_url": f"http://localhost:{cfg.get('inbound', {}).get('control_port', 6433)}",
+             "control_url": f"http://{HOST}:{cfg.get('inbound', {}).get('control_port', 6433)}",
              "started_at": datetime.now(timezone.utc).isoformat()}
     state_file(cfg).write_text(json.dumps(state, indent=2))
     wait_http(base_url(cfg) + cfg["app"].get("health_path", "/"), timeout=120)

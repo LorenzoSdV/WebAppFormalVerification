@@ -14,12 +14,13 @@ one NDJSON trace for a TLA+ trace spec built on webkit/tla/WebTrace.tla:
              <SqlAction>                   per SELECT / BEGIN / COMMIT / ROLLBACK
              <SqlAction>_start, _finish    per UPDATE / DELETE / INSERT (which can wait on locks)
 
-Every event has an interval [lo, hi] in which it took effect. Events of one actor are in
+Request events list in "absent" the mapped body fields and headers the request did not send (their
+args hold the same placeholder as an empty value). Every event has an interval [lo, hi] in which it took effect. Events of one actor are in
 program order; events of different actors are ordered only when their intervals don't overlap.
 COMMIT events carry the rows the transaction committed (joined from logical decoding by xid),
 so the trace spec can check the model's committed state, not just statement results.
 
-The mapping file is the only app-specific input (see eval/seeded-shop/mapping.toml).
+The mapping file is the only app-specific input (format: the harness-generation skill).
 Unmapped requests or statements are reported and fail the build.
 """
 
@@ -152,8 +153,8 @@ def build(run: Path, mapping: Mapping, since: int, until: int | None) -> list[di
 
     def ev(actor: str, action: str, kind: str, lo: int, hi: int, **extra) -> dict:
         base = {"actor": actor, "action": action, "kind": kind, "phase": "", "lo": lo, "hi": hi,
-                "limit1": False, "args": {"none": 0}, "rows": [], "has_rows": False, "count": 0, "err": "",
-                "writes": [], "status": 0, "resp": {"none": 0}}
+                "limit1": False, "args": {"none": 0}, "absent": [], "rows": [], "has_rows": False, "count": 0,
+                "err": "", "writes": [], "status": 0, "resp": {"none": 0}}
         base.update(extra)
         return base
 
@@ -170,16 +171,23 @@ def build(run: Path, mapping: Mapping, since: int, until: int | None) -> list[di
                 body = json.loads(req["body"])
             except json.JSONDecodeError:
                 body = {}
+        # Fields and headers the request did not send at all: their args hold the same placeholder as an
+        # empty value (-1 / ""), so "absent" lets a trace spec tell "not sent" from "sent empty".
+        absent: list[str] = []
         for field, typ in route.get("body", {}).items():
-            args[field] = convert(body.get(field), typ)
+            if not isinstance(body, dict) or field not in body:
+                absent.append(field)
+            args[field] = convert(body.get(field) if isinstance(body, dict) else None, typ)
         headers = {k.lower(): v for k, v in req.get("headers", {}).items()}
         for name, typ in route.get("headers", {}).items():
             raw = headers.get(name)
+            if name not in headers:
+                absent.append(name.replace("-", "_"))
             if typ == "bearer":
                 raw = raw[len("Bearer "):] if raw and raw.startswith("Bearer ") else NONE_TEXT
             args[name.replace("-", "_")] = convert(raw, "int" if typ == "int" else "text")
         seq = [ev(actor, f"{route['action']}_Begin", "request", req["t_start_ns"], req["t_start_ns"],
-                  args=args or {"none": 0})]
+                  args=args or {"none": 0}, absent=sorted(absent))]
 
         for s in sorted(stmts_by_trace[tid], key=lambda s: s["t_send_ns"]):
             sql = COMMENT_RE.sub("", s["sql"]).strip()

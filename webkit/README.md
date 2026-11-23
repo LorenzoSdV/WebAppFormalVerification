@@ -21,9 +21,9 @@ The generated override also:
 - removes the app's host port, so every request goes through `wk-inbound` and gets recorded.
 
 ```bash
-python3 webkit/stack/wkstack.py up       --config eval/seeded-shop/stack.toml   # new run in runs/<id>/
-python3 webkit/stack/wkstack.py selftest --config eval/seeded-shop/stack.toml   # checks every signal
-python3 webkit/stack/wkstack.py down     --config eval/seeded-shop/stack.toml
+python3 webkit/stack/wkstack.py up       --config <app>/stack.toml   # new run in runs/<id>/
+python3 webkit/stack/wkstack.py selftest --config <app>/stack.toml   # checks every signal
+python3 webkit/stack/wkstack.py down     --config <app>/stack.toml
 ```
 
 See the docstring of `stack/wkstack.py` for the stack config format.
@@ -55,12 +55,12 @@ Every line has `src`, `ev` and `ts_ns` (wall-clock nanoseconds when written).
 
 | Piece | What it does |
 |---|---|
-| `tracebuilder/build.py` | Turns a recording into a model-level trace, driven by the app's **mapping file** (e.g. `eval/seeded-shop/mapping.toml`): routes and SQL patterns to action names, modelled tables and columns. It emits one event per action, each with its time interval, results, errors, the rows each COMMIT committed (from CDC), and the initial state (replayed from CDC) |
+| `tracebuilder/build.py` | Turns a recording into a model-level trace, driven by the app's **mapping file** (format: the harness-generation skill): routes and SQL patterns to action names, modelled tables and columns. It emits one event per action, each with its time interval, results, errors, the rows each COMMIT committed (from CDC), and the initial state (replayed from CDC) |
 | `tla/WebTrace.tla` | Generic ordering. A request's own events stay in program order. Different requests' events are ordered only when their intervals don't overlap, so TLC searches the interleavings the recording leaves open (as in Specula's Category B traces) |
 | `tracecheck/check.py` | Runs TLC on traces for any app trace spec. For a rejected trace it reports the most events the model can match and the recorded events it could not match next, which is where the model and the app diverge |
 
-The app-specific parts are three files. The model (e.g. `Shop.tla`, built on `WebDB`) and its trace spec
-(`TraceShop.tla`) are what the agent writes in a pipeline run. The mapping file is configuration.
+The app-specific parts are three files. The model (`<App>.tla`, built on `WebDB`) and its trace spec
+(`Trace<App>.tla`) are what the agent writes in a pipeline run. The mapping file is configuration.
 
 ## Model checking and reproduction (M4, M5)
 
@@ -76,7 +76,6 @@ The app-specific parts are three files. The model (e.g. `Shop.tla`, built on `We
 
 - **Autocommit writes have no xid.** The xid is captured only before an explicit `COMMIT`. Such writes are matched to CDC by table and time interval in the trace builder (M3).
 - **Request attribution needs sqlcommenter.** That's available for Node (via `otel/node`). Other runtimes need their equivalent, or a fallback that matches OTel DB spans by time. A Python bootstrap comes in M8.
-- **The proxy only records for now.** Holding and releasing statements for deterministic reproduction comes in M5.
 - **No egress proxy yet.** It's added with the payment-provider module in M7.
 - **`COPY` and multi-statement simple queries** are forwarded correctly but recorded only coarsely.
 
@@ -98,8 +97,8 @@ Specula's orchestrator now owns the stack (see `Specula/src/specula/stacklib.py`
   model state after the matched prefix.
 
 ```bash
-python3 webkit/stack/wkstack.py ensure --config eval/seeded-shop/stack.toml
-python3 webkit/workload/runner.py run --stack eval/seeded-shop/stack.toml \
-    --mapping eval/seeded-shop/mapping.toml --workloads eval/seeded-shop/workloads.py --traces /tmp/traces
-python3 webkit/tracecheck/coverage.py --mapping eval/seeded-shop/mapping.toml /tmp/traces
+python3 webkit/stack/wkstack.py ensure --config <app>/stack.toml
+python3 webkit/workload/runner.py run --stack <app>/stack.toml \
+    --mapping <app>/mapping.toml --workloads <app>/workloads.py --traces /tmp/traces
+python3 webkit/tracecheck/coverage.py --mapping <app>/mapping.toml /tmp/traces
 ```

@@ -7,7 +7,8 @@ Passes when both hold:
 
 1. Every action the mapping defines appears in at least one trace: <Route>_Begin / <Route>_End per
    route, <Sql> per select/begin/commit/rollback rule, <Sql>_start / <Sql>_finish per write/insert rule.
-   An action that cannot occur through the public API can be exempted in the mapping, with a reason:
+   An action that cannot occur through the public API can be exempted in the mapping, with a reason
+   that says why (reasons like "not tested" or "not in the workloads" are rejected):
 
        [coverage.exempt]
        Rollback = "the app never issues ROLLBACK: errors end the transaction by closing it"
@@ -23,12 +24,20 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 import tomllib
 from collections import defaultdict
 from pathlib import Path
 
 BOUNDARY = {"request", "response"}
+# An exemption must say why the public API cannot reach the action. "Not tested" is a gap in the
+# workloads, which is exactly what this gate exists to catch.
+NOT_A_REASON = re.compile(
+    r"not (yet )?(tested|covered|exercised|reached|recorded|triggered)|untested|uncovered|unexercised"
+    r"|no workload|not in (the )?(current )?workloads?|workloads? (do|does) not|skipped|todo|later",
+    re.IGNORECASE,
+)
 
 
 def mapped_actions(mapping: dict) -> set[str]:
@@ -84,6 +93,8 @@ def check(mapping_path: Path, traces: Path) -> dict:
 
     missing = sorted(a for a in wanted if not seen.get(a) and a not in exempt)
     unknown_exempt = sorted(set(exempt) - wanted)
+    bad_reasons = sorted(a for a, why in exempt.items()
+                         if not isinstance(why, str) or len(why.strip()) < 15 or NOT_A_REASON.search(why))
     no_overlap = sorted(s for s, ts in by_scenario.items() if not any(ok for _, ok in ts))
     return {
         "traces": len(files),
@@ -91,9 +102,11 @@ def check(mapping_path: Path, traces: Path) -> dict:
         "missing_actions": missing,
         "exempt": exempt,
         "unknown_exempt": unknown_exempt,
+        "bad_exemption_reasons": bad_reasons,
         "concurrent_scenarios": {s: [t for t, ok in ts if ok] for s, ts in sorted(by_scenario.items())},
         "scenarios_without_overlap": no_overlap,
-        "ok": bool(files) and bool(by_scenario) and not missing and not no_overlap and not unknown_exempt,
+        "ok": bool(files) and bool(by_scenario) and not missing and not no_overlap and not unknown_exempt
+              and not bad_reasons,
     }
 
 
@@ -113,6 +126,9 @@ def main() -> int:
         print(f"  MISSING  {a}: in no trace (add a workload that reaches it, or exempt it with a reason)")
     for a in report["unknown_exempt"]:
         print(f"  BAD EXEMPTION  {a}: not an action of this mapping")
+    for a in report["bad_exemption_reasons"]:
+        print(f"  BAD EXEMPTION  {a}: the reason must explain why the public API cannot reach it "
+              f"({report['exempt'][a]!r}); a workload gap is not a reason")
     for s, ts in report["concurrent_scenarios"].items():
         if ts:
             print(f"  OK       {s}: overlapping actors in {len(ts)} trace(s)")

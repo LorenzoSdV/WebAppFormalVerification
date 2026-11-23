@@ -13,7 +13,7 @@ match next but could not be: that is where model and implementation disagree. --
 prints what was recorded for those events (rows, error code, row count, status) and the model's
 state after the matched prefix, so the two can be compared directly.
 
-    check.py ... --violates NoNegativeStock --invariants-module ShopInvariants TRACE
+    check.py ... --violates NoOverbooking --invariants-module BookingInvariants TRACE
 
 checks a reproduction instead: is there a behavior that matches the whole trace AND ends in a
 state violating the invariant? REPRODUCED means the recorded run is that bug, as the model

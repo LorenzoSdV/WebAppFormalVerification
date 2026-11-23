@@ -21,6 +21,23 @@ LIB = REPO / "Specula" / "lib"
 CP = f"{LIB / 'tla2tools.jar'}{os.pathsep}{LIB / 'CommunityModules-deps.jar'}"
 
 
+KEYWORDS = {"SPECIFICATION", "INIT", "NEXT", "CONSTANT", "CONSTANTS", "INVARIANT", "INVARIANTS", "PROPERTY",
+            "PROPERTIES", "SYMMETRY", "VIEW", "CONSTRAINT", "CONSTRAINTS", "ACTION_CONSTRAINT",
+            "ACTION_CONSTRAINTS", "CHECK_DEADLOCK", "ALIAS", "POSTCONDITION"}
+
+
+def focused_cfg(text: str, invariant: str) -> str:
+    """The config with every INVARIANT(S)/PROPERTY(IES) section replaced by just `invariant`."""
+    out, skipping = [], False
+    for line in text.splitlines():
+        word = line.split()[0] if line.split() else ""
+        if word in KEYWORDS:
+            skipping = word in {"INVARIANT", "INVARIANTS", "PROPERTY", "PROPERTIES"}
+        if not skipping:
+            out.append(line)
+    return "\n".join(out) + f"\nINVARIANT {invariant}\n"
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--spec", type=Path, required=True)
@@ -30,9 +47,13 @@ def main() -> int:
     args = ap.parse_args()
     with tempfile.TemporaryDirectory(prefix="wksched-") as tmp:
         ce = Path(tmp) / "ce.json"
+        # Check only the target invariant: hunt configs enable several, and TLC stops at the first one
+        # violated, which may be a different finding.
+        cfg = Path(tmp) / "focused.cfg"
+        cfg.write_text(focused_cfg(args.config.read_text(), args.invariant))
         p = subprocess.run(
             ["java", "-XX:+UseParallelGC", f"-DTLA-Library={REPO / 'webkit' / 'tla'}", "-cp", CP, "tlc2.TLC",
-             "-config", str(args.config.resolve()), "-workers", "auto", "-noGenerateSpecTE",
+             "-config", str(cfg), "-workers", "auto", "-noGenerateSpecTE",
              "-dumpTrace", "json", str(ce), "-metadir", str(Path(tmp) / "meta"), str(args.spec.resolve())],
             capture_output=True, text=True, cwd=args.spec.resolve().parent)
         if f"Invariant {args.invariant} is violated" not in p.stdout + p.stderr or not ce.exists():

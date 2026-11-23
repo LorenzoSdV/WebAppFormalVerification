@@ -107,11 +107,36 @@ def changed_rows(first: dict, last: dict) -> list[str]:
     return out
 
 
+WEBDB_VARS = {"ver", "clock", "tx", "wr", "lk", "stmt", "res", "sread", "serlog", "sq"}
+
+
+def app_actor_vars(state: dict) -> list[str]:
+    """The model's own per-actor variables (functions keyed by the actors), not WebDB's."""
+    actors = set(state["sq"])
+    return [v for v, val in state.items()
+            if v not in WEBDB_VARS and isinstance(val, dict) and val and set(val) == actors]
+
+
+def infer_actor(before: dict, after: dict) -> str:
+    """The actor whose own app variables (pc, inputs, locals, response) changed in this step; "db"
+    when only WebDB's variables changed (lock grants, deadlock and serialization failures). Used when
+    the action has no actor parameter, e.g. a model whose Next is a wrapper action."""
+    changed = sorted({a for v in app_actor_vars(after) for a in after[v] if after[v][a] != before[v].get(a)})
+    if len(changed) == 1:
+        return changed[0]
+    if not changed:
+        statement = sorted(a for a in after["sq"] if after["sq"][a] != before["sq"][a])
+        return statement[0] if len(statement) == 1 else "db"
+    return changed[0]
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("ce", type=Path)
     ap.add_argument("--invariant", default="")
-    ap.add_argument("--actor-param", default="r", help="name of the action parameter that identifies the actor")
+    ap.add_argument("--actor-param", default="r",
+                    help="name of the action parameter that identifies the actor (inferred from the state "
+                         "change when the action has none)")
     ap.add_argument("--schedule-out", type=Path)
     args = ap.parse_args()
 
@@ -120,11 +145,15 @@ def main() -> int:
     inputs: dict[str, dict] = {}
     for (_, before), info, (_, after) in ce["action"]:
         ctx = info.get("context", {})
-        actor = ctx.get(args.actor_param, "db")
+        actor = ctx.get(args.actor_param) or infer_actor(before, after)
         kind, text = describe(info["name"], actor, before, after)
         issued = actor != "db" and after["sq"][actor] > before["sq"][actor]
         if actor != "db" and before["sq"][actor] == 0 and not issued and actor not in inputs:
-            inputs[actor] = {k: v for k, v in ctx.items() if k != args.actor_param}
+            given = {k: v for k, v in ctx.items() if k != args.actor_param}
+            # Without action parameters (a wrapper action), take the actor's own app state after its
+            # first step (e.g. its request record) as its inputs.
+            inputs[actor] = given or {v: after[v][actor] for v in app_actor_vars(after)
+                                      if after[v][actor] != before[v][actor]}
         # The model lets the statement wait on locks only if it is still in flight after the step.
         may_wait = issued and after["stmt"][actor]["kind"] != "none"
         steps.append({"actor": actor, "action": info["name"], "kind": kind, "text": text,
